@@ -1,0 +1,7 @@
+id: "testing-script";
+version: 1;
+//description;
+name: "Test";
+creator: "you.";
+//files;
+run: "main.lua";

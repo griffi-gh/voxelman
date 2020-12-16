@@ -1,0 +1,10 @@
+id: "tptmp";
+version: 11;
+versionString: "1.0.1";
+//description;
+name: "Powder Toy Multiplayer";
+creator: "Cracker64";
+description: "Cracker64's Powder Toy Multiplayer.\nAllows you to interact with other players while\nenjoying nearly all TPT has to offer.\nMaster server is run by cracker64 and jacob1.";
+//files;
+run: "tptmp.lua";
+icon: "icon.bin";
