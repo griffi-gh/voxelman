@@ -1,4 +1,25 @@
+-----start-----
 local TEXTH = 6
+local type = type
+
+local exeName,os
+if platform then
+  os = platform.platform()
+  exeName = platform.exeName
+  if type(exeName)=='function' then
+    exeName = exeName()
+  end
+end
+
+local function restart()
+  if not(platform) then
+    os.exit()
+  elseif os=='WIN32' then
+    while true do tpt.throw_error('Please restart game manually') end
+  else
+    platform.restart()
+  end
+end
 
 manager = {
   dir = 'scripts/',
@@ -186,10 +207,50 @@ local function binImgDraw(d,x,y,s)
 end
 
 local scriptMt = {
-  run = function(self,force)
+  run = function(self,force,noErrNotify)
     if not(self.running) or force then
       self.running = true
-      loadfile(self.path..self.info.run)()
+      local ok,v,fn
+      local f = self.path..self.info.run
+      fn,v = loadfile(f)
+      if fn then
+        ok,v = pcall(fn)
+      end
+      if not(ok) or not(fn) then
+        manager.pushNotification{
+          text=string.format("Error: %s",v),
+          backgroundColor = {240,40,40,200},
+          borderColor = {100,0,0},
+          life = 400,
+          fadeStart = 15,
+          fade = true,
+          buttons = {
+            {
+              text = 'Copy',
+              action = function()
+                if platform then
+                  platform.clipboardCopy(v)
+                  manager.pushNotification{
+                    text = 'Copied',
+                    fade = true,
+                    fadeStart = 30,
+                    life = 60,
+                  }
+                else
+                  tpt.input('Copy text','',v)
+                end
+              end
+            },
+            {
+              text = 'Dismiss',
+              action = function(v)
+                v.life = 10
+                v.fadeStart = 10
+              end
+            }
+          }
+        }
+      end
     end
   end
 }
@@ -200,29 +261,33 @@ end
 
 local function loadScriptTmp(p)
   p = epth(p) --add "/" if missing
-  local f = assert(io.open(p..'info.var'),'Missing info.var'):read('*a')
-  local ok,info = pcall(varParse,f)
-  assert(ok and info,'Invalid info.var')
-  assert(info.run,'Missing variable in info.var')
-  local t = {}
-  info.run = info.run:gsub('/',''):gsub('\\','')
-  if info.icon then
-    info.icon = info.icon:gsub('/',''):gsub('\\','')
-    t.icon = io.open(p..info.icon,'rb'):read('*a')
+  if fs.isDirectory(p) then
+    local f = assert(io.open(p..'info.var'),'Missing info.var'):read('*a')
+    local ok,info = pcall(varParse,f)
+    assert(ok and info,'Invalid info.var')
+    assert(info.run,'Missing variable in info.var')
+    local t = {}
+    info.run = info.run:gsub('/',''):gsub('\\','')
+    if info.icon then
+      info.icon = info.icon:gsub('/',''):gsub('\\','')
+      t.icon = io.open(p..info.icon,'rb'):read('*a')
+    end
+    t.info = info
+    t.path = p
+    local runf = io.open(p..info.run,'rb')
+    t.hash = hash(runf:read('*a')..string.format("!%s!%s!",info.creator,info.id))
+    setmetatable(t,{__index=scriptMt})
+    runf:close()
+    return t
   end
-  t.info = info
-  t.path = p
-  local runf = io.open(p..info.run,'rb')
-  t.hash = hash(runf:read('*a')..string.format("!%s!%s!",info.creator,info.id))
-  setmetatable(t,{__index=scriptMt})
-  runf:close()
-  return t
 end
 
 local function loadScript(...)
   local s = loadScriptTmp(...)
-  table.insert(manager.loaded,s)
-  return s
+  if s then
+    table.insert(manager.loaded,s)
+    return s
+  end
 end
 
 local function loadDirectory(f)
@@ -338,6 +403,140 @@ local function UIdeleteClass(class)
   end
 end
 
+manager.notifications = {}
+
+local function clickNotifications(b,u)
+  if b==1 then
+    for i=#manager.notifications,1,-1 do
+      local v = manager.notifications[i]
+      if v.buttons then
+        for i2=#v.buttons,1,-1 do
+          local v2 = v.buttons[i2]
+          if u==true then 
+            v2.down = false 
+          end
+          if v2.hit then
+            if u then
+              if v2.action then
+                v2.action(v,v2)
+              end
+            else
+              v2.down = true
+            end
+            return true
+          end
+        end
+      end
+    end
+  end
+end
+
+local function copyt4(a)
+  if a then
+    return {a[1],a[2],a[3],a[4]}
+  else
+    return nil
+  end
+end
+
+local function tickNotifications()
+  local x,y = 10,10
+  local mw,mh = 10,5
+  local bmw,bms,bh,bhm = 5,10,17,4 --button margin w; button h spacing; button height;button v padding
+  local notspc = 5
+  for i=#manager.notifications,1,-1 do
+    local v = manager.notifications[i]
+    if fade and not(v.fadeStart) then 
+      v.fadeStart=v.life
+    end
+    local fade = math.min(1,(v.fade and v.life/v.fadeStart or 1))
+    local hasbuttons = (v.buttons and #v.buttons>0)
+    
+    local bgc = copyt4(v.backgroundColor) or {20,20,180,200}--{20,20,20,200}
+    local brc = copyt4(v.borderColor) or {20,20,185,255}--{255,255,255,255}
+    local txc = copyt4(v.textColor) or {255,255,255,255}
+    local bbgc,bbrc,bbhc,bbcc 
+    if hasbuttons then
+      bbgc = copyt4(v.buttonBackgroundColor) or {bgc[1],bgc[2],bgc[3],128}
+      bbrc = copyt4(v.buttonBorderColor) or brc
+      bbhc = copyt4(v.buttonHoverColor) or {
+        math.min(255,bbgc[1]*2),
+        math.min(255,bbgc[2]*2),
+        math.min(255,bbgc[3]*2),
+        255
+      }
+      bbcc = copyt4(v.buttonHoldColor) or {
+        math.min(255,bbgc[1]*4),
+        math.min(255,bbgc[2]*4),
+        math.min(255,bbgc[3]*4),
+        255
+      }
+      bbgc[4] = (bbgc[4] or 255)*fade
+      bbrc[4] = (bbrc[4] or 255)*fade
+      bbhc[4] = (bbhc[4] or 255)*fade
+      bbcc[4] = (bbcc[4] or 255)*fade
+    end
+    bgc[4] = (bgc[4] or 255)*fade
+    brc[4] = (brc[4] or 255)*fade
+    txc[4] = (txc[4] or 255)*fade
+      
+    local buth = (hasbuttons and bh+bhm*2 or 0)
+    local butwt = 0
+    if hasbuttons then
+      for i2,v2 in ipairs(v.buttons) do
+        butwt = butwt+tpt.textwidth(v2.text)+bmw*2
+      end
+      butwt = butwt+(#v.buttons*(bms/2))+mw
+    end
+    local w = math.max(butwt,tpt.textwidth(v.text)+mw*2)
+    local h = TEXTH+mh*2+buth
+    graphics.fillRect(x,y,w,h,unpack(bgc))
+    graphics.drawRect(x,y,w,h,unpack(brc))
+    graphics.drawText(x+mw,y+mh,v.text,unpack(txc))
+    
+    if hasbuttons then  
+      local bx = bms+x
+      local by = y+mh+TEXTH+bhm*2
+      for i2,v2 in ipairs(v.buttons) do
+        local t2 = v2.text
+        local bw = tpt.textwidth(t2)+bmw*2 -- bh is static
+        v2.hit = (
+          not(
+            manager.menu.open and 
+            (
+              mouseX>=manager.menu.x and 
+              mouseY>=manager.menu.y and 
+              mouseX<=manager.menu.x+manager.menu.w and 
+              mouseY<=manager.menu.y+manager.menu.h
+            )
+          ) and
+          (mouseX>=bx and mouseY>=by and mouseX<bx+bw and mouseY<by+bh)
+        )
+        local bc1 = v2.hit and (v2.down and bbcc or bbhc) or bbgc
+        graphics.fillRect(bx,by,bw,bh,unpack(bc1))
+        graphics.drawRect(bx,by,bw,bh,unpack(bbrc))
+        graphics.drawText(bx+bmw,by+(bh-TEXTH)/2,t2,unpack(txc))
+        bx = bx+bw+bhm
+      end
+    end
+    
+    if v.life then
+      v.life = v.life-1
+      if v.life==0 then
+        table.remove(manager.notifications,i)
+        return
+      end
+    end
+    y = y+h+notspc
+  end
+end
+
+function manager.pushNotification(c) --TODO!!!!
+  if type(c.text)=='string' then
+    table.insert(manager.notifications,c)
+  end
+end
+
 local function saveRun()
   local p = epth(manager.dir)..'run.var'
   local f = io.open(p,'wb')
@@ -375,19 +574,38 @@ local function tick()
     if stat=='done' then
       local d = verifiedHashesReq:finish()
       --print(type(d),d)
-      if type(d)=='string' then
+      if type(d)=='string' and #d>1 then
         local l = varParse(d)
         for i,v in pairs(l) do
           verifiedHashes[tonumber(v)] = true
         end
-        print('Verification data received')
+        manager.pushNotification{
+          text = 'Verification data received',
+          life = 60,
+          fade = true,
+          fadeStart = 30
+        }
       else
-        print(err)
+        manager.pushNotification{
+          text = 'Verification error 0 (Check Internet connection)',
+          backgroundColor = {240,40,40,200},
+          borderColor = {100,0,0},
+          life = 200,
+          fade = true,
+          fadeStart = 30
+        }
       end
       verifiedHashesReq = nil
     elseif stat=='dead' then
       verifiedHashesReq = nil
-      print(err)
+      manager.pushNotification{
+        text = 'Verification error 1 (Check Internet connection)',
+        backgroundColor = {240,40,40,200},
+        borderColor = {100,0,0},
+        life = 200,
+        fade = true,
+        fadeStart = 30
+      }
     end
   end
   
@@ -440,6 +658,14 @@ local function tick()
   end
   
   if manager.menu.open then
+    graphics.fillRect(0,0,graphics.WIDTH,graphics.HEIGHT,0,0,0,85) --Fade bg
+  end
+  
+  if #manager.notifications>0 then
+    tickNotifications()
+  end
+  
+  if manager.menu.open then
     local menu = manager.menu
     local mx,my,mw,mh = menu.x,menu.y,menu.w,menu.h
     local toph = menu.toph
@@ -478,7 +704,7 @@ local function tick()
       UIdeleteClass(UIgetClass'exitbtn')
       UIadd(UIbutton(mw-toph,0,toph,toph,'X',function() menu.open=false end,'exitbtn'))
     end
-    graphics.fillRect(0,0,graphics.WIDTH,graphics.HEIGHT,0,0,0,85) --Fade bg
+    
     graphics.fillRect(mx,my,mw,mh,0,0,0) --Bg
     graphics.drawRect(mx,my,mw,toph,255,255,255) --top
     graphics.drawRect(mx,my,mw,mh,255,255,255) --Border
@@ -512,8 +738,10 @@ local function tick()
       end
       try = math.floor((ch/2)-((TEXTH*2+3)/2))
       
-      local ta,tb = v.info.name,'by '..v.info.creator
+      local ta = v.info.name or v.path
+      local tb = 'by '..(v.info.creator or 'Uknown creator')
       local tc = '(running)'
+      
       graphics.drawText(cx+trx,cy+try,ta)
       graphics.drawText(cx+trx,cy+try+TEXTH+3,tb,20,20,255)
       if v.running then
@@ -570,8 +798,41 @@ local function tick()
             function(self)
               regenCardsUI = true
               if self.on then
+                local notifOn = false
+                for i,v in ipairs(manager.notifications) do
+                  if v.idnt=='restartUnload' then
+                    notifOn = true
+                    break
+                  end
+                end
+                if not notifOn then
+                  local notif = {
+                    text='Restart The Powder Toy to disable script(s).',
+                    backgroundColor = {240,40,40,200},
+                    borderColor = {100,0,0},
+                    buttons={},
+                    idnt = 'restartUnload',
+                    life = nil,
+                  }
+                  notif.buttons[1] = {
+                    text='Dismiss',
+                    action = function(v,v2)
+                      v.life = 15
+                      v.fadeStart = 15
+                      v.fade = true
+                      v2.action=function() --[[v2.text = 'ok boomer']] end --no
+                    end
+                  }
+                  if os~='WIN32' then --disable restart on windows
+                    notif.buttons[2] = {
+                      text='Restart game',
+                      action = restart
+                    }
+                  end
+                  
+                  manager.pushNotification(notif)
+                end
                 toRun[v.info.id] = false
-                print('Restart to unload script')
               else
                 toRun[v.info.id] = true
                 v:run()
@@ -672,7 +933,7 @@ local function mousedown(x,y,b)
       end
     end
   end
-  if manager.menu.open then return false end
+  if clickNotifications(b,false) or manager.menu.open then return false end
 end
 
 local function mouseup(x,y,b)
@@ -710,7 +971,7 @@ local function mouseup(x,y,b)
       end
     end
   end
-  if manager.menu.open then return false end
+  if clickNotifications(b,true) or manager.menu.open then return false end
 end
 
 event.register(event.tick,tick)
@@ -736,7 +997,13 @@ else
 end
 pcall(io.close,run)
 
+manager.pushNotification{
+  text = string.format('Loaded %s script(s)',#manager.loaded),
+  life = 60,
+  fadeStart = 15,
+  fade = true,
+}
+
 runAll()
 
-print(string.format('VOXELMAN - Loaded %s script(s)',#manager.loaded))
------
+----- end -----
