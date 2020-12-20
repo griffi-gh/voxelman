@@ -2,27 +2,9 @@
 local TEXTH = 6
 local type = type
 
-local exeName,os
-if platform then
-  os = platform.platform()
-  exeName = platform.exeName
-  if type(exeName)=='function' then
-    exeName = exeName()
-  end
-end
-
-local function restart()
-  if not(platform) then
-    os.exit()
-  elseif os=='WIN32' then
-    while true do tpt.throw_error('Please restart game manually') end
-  else
-    platform.restart()
-  end
-end
-
 manager = {
   dir = 'scripts/',
+  sdir = 'lua/',
   button={
     x = 613,
     y = 120,
@@ -48,6 +30,28 @@ manager = {
   loadVerifiedHashes = true,
 }
 local toRun = {}
+
+local fileRegex = '[^/\\]+$'
+local extRegex = '.[^.]+$'
+
+local exeName,os
+if platform then
+  os = platform.platform()
+  exeName = platform.exeName
+  if type(exeName)=='function' then
+    exeName = exeName()
+  end
+end
+
+local function restart()
+  if not(platform) then
+    os.exit()
+  elseif os=='WIN32' then
+    while true do tpt.throw_error('Please restart game manually') end
+  else
+    platform.restart()
+  end
+end
 
 local verifiedHashesUrl = 'https://pastebin.com/raw/ucag570u'
 local verifiedHashes = {}
@@ -112,7 +116,7 @@ local function varParse(d,sep)
               elseif c=="\\" then
                 i = i+1
                 local s = b:sub(i,i)
-                tv = tv..spec[s]
+                tv = tv..(spec[s] or '\\'..s)
               else
                 tv = tv..c
               end
@@ -188,6 +192,54 @@ local function varEncode(t,sep,tab)
   return f
 end
 
+local function c64transfer()
+  if fs.exists('scripts/autorunsettings.txt') then
+    local c = tpt.confirm('Transfer your scripts from Cracker64\'s Manager?',[[
+1) Your downloaded scripts will be converted (it is recommended to re-download them)
+2) Your autorun settings will be lost
+3) If you want to return to Cracker64's Manager, you will have to redownload the online scripts.]])
+    if c then
+      for i,v in ipairs(fs.list('scripts')) do
+        if fs.isFile('scripts/'..v) and v:match(extRegex)=='.lua' then
+          fs.move('scripts/'..v,'scripts/lua/'..v)
+        end
+      end
+      if fs.exists('scripts/downloaded/scriptinfo') then
+        local ar = io.open('scripts/downloaded/scriptinfo','rb'):read('*a')
+        for p in parts(ar,'\n') do
+          if #p>=2 then
+            local oinf = varParse(p,',')
+            local path = 'scripts/'..oinf.path:gsub('\\','/')
+            local ninf = {
+              description = oinf.description,
+              version = tonumber(oinf.version),
+              name = oinf.name,
+              creator = oinf.author,
+              id = 'converted-'..oinf.name..oinf.ID,
+              noVerify = true,
+              converted = true,
+              oid = oinf.ID,
+              run = 'main.lua'
+            }
+            local dir = 'scripts/'..ninf.id
+            fs.makeDirectory(dir)
+            --tpt.log(path)
+            --tpt.log(dir..'/main.lua')
+            fs.move(path,dir..'/main.lua')
+            local f = io.open(dir..'/info.var','wb')
+            assert(f,'Unable to open info.var file: f'..dir..'/info.var')
+            f:write(varEncode(ninf))
+            f:close()
+          end
+        end
+      end
+      fs.removeFile('scripts/autorunsettings.txt')
+      fs.removeFile('scripts/downloaded/scriptinfo')
+      fs.removeDirectory('scripts/downloaded')
+    end
+  end
+end
+
 local function binImgSize(d)
   return d:byte(1),d:byte(2)
 end
@@ -211,7 +263,7 @@ local scriptMt = {
     if not(self.running) or force then
       self.running = true
       local ok,v,fn
-      local f = self.path..self.info.run
+      local f = self.path..(self.single and '' or self.info.run)
       fn,v = loadfile(f)
       if fn then
         ok,v = pcall(fn)
@@ -255,13 +307,16 @@ local scriptMt = {
   end
 }
 
-local function epth(p)
+local function epth(p) --add "/"
   return p..(not(p:sub(#p,#p)=='/') and '/' or '')
+end
+local function xpth(p) --remove "/"
+  return p:sub(#p,#p)=='/' and p:sub(1,#p-1) or p
 end
 
 local function loadScriptTmp(p)
-  p = epth(p) --add "/" if missing
   if fs.isDirectory(p) then
+    p = epth(p) --add "/" if missing
     local f = assert(io.open(p..'info.var'),'Missing info.var'):read('*a')
     local ok,info = pcall(varParse,f)
     assert(ok and info,'Invalid info.var')
@@ -279,6 +334,26 @@ local function loadScriptTmp(p)
     setmetatable(t,{__index=scriptMt})
     runf:close()
     return t
+  else
+    p = xpth(p)
+    local runf = io.open(p,'rb')
+    local rdat = runf:read('*a')
+    runf:close()
+    return setmetatable(
+      {
+        info = {
+          name = string.match(p,fileRegex),
+          run = string.match(p,fileRegex),
+          id = 'luafile-'..p
+        },
+        single = true,
+        hash = hash(rdat),
+        path = p,
+      },
+      {
+        __index=scriptMt
+      }
+    )
   end
 end
 
@@ -290,12 +365,19 @@ local function loadScript(...)
   end
 end
 
-local function loadDirectory(f)
+local function loadDirectory(f,allowSingle,allowDir)
+  if allowDir==nil then allowDir=true end
+  if allowSingle==nil then allowSingle=true end
   f = epth(f or dir)
   local l = fs.list(f)
   for i,v in ipairs(l) do
-    local lp = f..v..'/'
-    if fs.isDirectory(lp) and fs.exists(lp..'info.var') then
+    local lp = f..v
+    local isValid = (
+      (allowSingle and fs.isFile(lp) and (v:match(extRegex)=='.lua')) or 
+      (allowDir and fs.isDirectory(lp..'/') and fs.exists(lp..'/info.var'))
+    )
+    --manager.pushNotification{text=lp..' '..(isValid and 'yes' or 'no')}
+    if isValid then 
       loadScript(lp)
     end
   end
@@ -569,7 +651,6 @@ local function tick()
   end
   
   if manager.loadVerifiedHashes and verifiedHashesReq then
-    local err = 'Unable to download verifiedHashes'
     local stat = verifiedHashesReq:status()
     if stat=='done' then
       local d = verifiedHashesReq:finish()
@@ -974,13 +1055,17 @@ local function mouseup(x,y,b)
   if clickNotifications(b,true) or manager.menu.open then return false end
 end
 
+c64transfer()
+
 event.register(event.tick,tick)
 event.register(event.mousemove,mousemove)
 event.register(event.mousedown,mousedown)
 event.register(event.mouseup,mouseup)
 
 fs.makeDirectory(manager.dir)
-loadDirectory(manager.dir)
+fs.makeDirectory(manager.dir..manager.sdir)
+loadDirectory(manager.dir,false,true)
+loadDirectory(manager.dir..manager.sdir,true,false)
 
 local run = io.open(epth(manager.dir)..'run.var','rb')
 if run then
