@@ -817,14 +817,14 @@ local function tick()
             UIhitbox(
               x-mx,y-h+1-my,w,h,nil,
               function() 
-                --print'dac'
+                local o = manager.menu.tabs[manager.menu.tab]
+                if o.onSwitchFrom then o:onSwitchFrom() end
+                if v.onSwitchTo then v:onSwitchTo() end
                 manager.menu.tab = i 
                 regenTabUI = true
-                v:onSwitch()
               end,'tab'
             )
           )
-          --print'dar'
         end
         x = x+w
       end
@@ -927,7 +927,7 @@ local function tick()
                   end
                   if not notifOn then
                     local notif = {
-                      text='Restart The Powder Toy to disable script(s).',
+                      text='Restart The Powder Toy to unload script(s).',
                       backgroundColor = {240,40,40,200},
                       borderColor = {100,0,0},
                       buttons={},
@@ -1042,17 +1042,17 @@ end
 manager.menu.tabs = {
   {
     text = 'Local scripts',
-    onSwitch = function() 
+    onSwitchTo = function() 
       regenCardsUI = true
       regenUI = true
-    end
-  },
-  {
-    text = 'FUN',
-    onSwitch = function() 
+    end,
+    onSwitchFrom = function()
       UIdeleteClass(UIgetClass'cards')
       UIdeleteClass(UIgetClass'navigation')
     end
+  },
+  {
+    text = 'FUN'
   }
 }
 
@@ -1063,7 +1063,7 @@ local function mousemove(x,y,dx,dy)
   local onScr = x>0 and y>0 and x<graphics.WIDTH and y<graphics.HEIGHT
   if manager.menu.open then 
     local toph = (x>manager.menu.x and 
-    x>manager.menu.y and 
+    y>manager.menu.y and 
     x<manager.menu.x+manager.menu.w-manager.menu.toph and
     y<manager.menu.y+manager.menu.toph) 
     if (toph or menuDrag) and onScr and mouseDown then
@@ -1078,16 +1078,6 @@ local function mousemove(x,y,dx,dy)
       )
     end
     buttonCollision(x,y)
-    --[[for i,v in ipairs(menuButtons) do
-      v.hit = (
-                v.x>=0 and v.y>=0 and v.x<=manager.menu.w and v.y<=manager.menu.h and
-                x>=manager.menu.x+v.x and y>=manager.menu.y+v.y and 
-                x<=manager.menu.x+v.x+v.w and y<=manager.menu.y+v.y+v.h
-              )
-      if not(v.hit) then 
-        v.down = false 
-      end
-    end]]
     return false 
   end
 end
@@ -1106,6 +1096,7 @@ local function mousedown(x,y,b)
       end
     end
   end
+  buttonCollision(x,y)
   if clickNotifications(b,false) or manager.menu.open then return false end
 end
 
@@ -1144,6 +1135,7 @@ local function mouseup(x,y,b)
       end
     end
   end
+  buttonCollision(x,y)
   if clickNotifications(b,true) or manager.menu.open then return false end
 end
 
