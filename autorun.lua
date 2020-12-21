@@ -2,6 +2,8 @@
 local TEXTH = 6
 local type = type
 
+local regenCardsUI,regenUI,regenTabUI = true,true,true
+
 manager = {
   dir = 'scripts/',
   sdir = 'lua/',
@@ -23,6 +25,7 @@ manager = {
     padding = 5,
     onPage = 8,
     page = 1,
+    tab = 1,
   },
   loaded = {},
   TPTMPSupport = true,
@@ -627,7 +630,6 @@ local function saveRun()
 end
 
 local mup = 0
-local regenCardsUI,regenUI = true,true
 
 local function buttonCollision(x,y)
   for i,v in ipairs(menuButtons) do
@@ -786,144 +788,217 @@ local function tick()
       UIadd(UIbutton(mw-toph,0,toph,toph,'X',function() menu.open=false end,'exitbtn'))
     end
     
+    local tabBarH = 16
+    local tabh,stabh = 14,15
+    
     graphics.fillRect(mx,my,mw,mh,0,0,0) --Bg
-    graphics.drawRect(mx,my,mw,toph,255,255,255) --top
+    graphics.drawRect(mx,my,mw,toph,255,255,255) --title bar
     graphics.drawRect(mx,my,mw,mh,255,255,255) --Border
-    graphics.drawText(mx+4,my+TEXTH/2,"VOXELMAN")
+    graphics.drawText(mx+4,my+TEXTH/2,"VOXELMAN") --Title text
+    graphics.drawLine(mx,my+toph+tabBarH,mx+mw-1,my+toph+tabBarH) -- tab sep
     
-    local page,onPage = manager.menu.page,manager.menu.onPage
-    
-    local pagestr = string.format("Page: %s/%s",page,manager.menu.pageCount)
-    graphics.drawText(mx+mw-toph-tpt.textwidth(pagestr)-4,my+TEXTH/2,pagestr,150,150,150)
-    
-    local cardh = 32
-    local ofs = (page-1)*onPage
-    for i=1,math.min(onPage,#manager.loaded) do
-      local ai = i+ofs
-      local v = manager.loaded[ai]
-      local av = manager.loaded[i]
-      if v==nil then break end
-      local cx = mx+menu.padding
-      local cy = my+menu.padding+toph+(menu.padding+cardh)*(i-1)
-      local cw,ch = mw-menu.padding*2, cardh
-      graphics.drawRect(cx,cy,cw,ch,255,255,255)
-      
-      local trx,try = 3,0
-      if v.icon then
-        local iconScale = 2
-        local iw,ih = binImgSize(v.icon)
-        iw = (iw+1)*iconScale
-        ih = (ih+1)*iconScale
-        binImgDraw(v.icon,trx+cx,math.floor(cy+ch/2-ih/2),iconScale)
-        trx = trx+iw+5
+    local tab = manager.menu.tab
+    do
+      local x = mx+2
+      local y = my+toph+tabBarH
+      if regenTabUI then
+        UIdeleteClass(UIgetClass'tab')
       end
-      try = math.floor((ch/2)-((TEXTH*2+3)/2))
-      
-      local ta = v.info.name or v.path
-      local tb = 'by '..(v.info.creator or 'Uknown creator')
-      local tc = '(running)'
-      
-      graphics.drawText(cx+trx,cy+try,ta)
-      graphics.drawText(cx+trx,cy+try+TEXTH+3,tb,20,20,255)
-      if v.running then
-        graphics.drawText(
-          math.floor(cx+trx+tpt.textwidth(ta)+5),
-          math.floor(cy+try),
-          tc,20,200,20
-        )
-      end
-      
-      if mouseX>cx+trx and mouseY>cy+try and mouseX<cx+trx+tpt.textwidth(ta) and mouseY<cy+try+TEXTH*1.1 then
-        local desc = v.info.description or 'No description'
-        local _,lc = desc:gsub('\n','')
-        if v.info.version or v.info.versionString then
-          desc = string.format(
-            'Version: %s(%s)\n%s',
-            v.info.versionString or v.info.version or '?',
-            v.info.version or '?',
-            desc
+      for i,v in ipairs(manager.menu.tabs) do
+        local s = tab==i
+        local w = tpt.textwidth(v.text)+6
+        local h = (s and stabh or tabh)
+        local c = s and 64 or 0
+        graphics.fillRect(x,y-h+1,w,h,c,c,c)
+        graphics.drawRect(x,y-h+1,w,h)
+        graphics.drawText(x+3,y-math.abs(TEXTH-h)-1,v.text)
+        if regenTabUI then
+          UIadd(
+            UIhitbox(
+              x-mx,y-h+1-my,w,h,nil,
+              function() 
+                --print'dac'
+                manager.menu.tab = i 
+                regenTabUI = true
+                v:onSwitch()
+              end,'tab'
+            )
           )
-          lc = lc+1
+          --print'dar'
         end
-        local texth = (lc+1)*(TEXTH*1.8)
-        local textw = 0
-        for p in parts(desc,'\n') do
-          textw = math.max(textw,tpt.textwidth(p))
-        end
-        local boxw,boxh = textw+8,texth+8
-        local boxx,boxy = mouseX-boxw/2,mouseY-boxh-TEXTH
-        graphics.fillRect(boxx,boxy,boxw,boxh,0,0,0)
-        graphics.drawRect(boxx,boxy,boxw,boxh,255,255,255)
-        graphics.drawText(boxx+4,boxy+4,desc)
+        x = x+w
       end
-      
-      --Verified icon
-      local isVerified = verifiedHashes[v.hash]
-      if isVerified then
-        local cx,cy = math.floor(cx+trx+tpt.textwidth(tb)+TEXTH),math.floor(cy+try+(TEXTH*1.5)+3)
-        local ro = math.floor(TEXTH/1.5)
-        graphics.fillCircle(cx,cy,ro,ro,20,30,230)
-        graphics.fillCircle(cx,cy,math.floor(TEXTH/2.5),math.floor(TEXTH/2.5),20,330,30)
-        if mouseX>cx-ro and mouseY>cy-ro and mouseX<cx+ro and mouseY<cy+ro then
-          local vt = 'Verified (hash: 0x'..bit.tohex(v.hash)..')'
-          local boxw,boxh = tpt.textwidth(vt)+6,TEXTH+8
-          local boxx,boxy = mouseX,mouseY-boxh
+    end
+    regenTabUI = false
+    
+    if tab==1 then
+      local cardh = 32
+      local page,onPage = manager.menu.page,manager.menu.onPage
+      local pagestr = string.format("Page: %s/%s",page,manager.menu.pageCount)
+      graphics.drawText(mx+mw-toph-tpt.textwidth(pagestr)-4,my+TEXTH/2,pagestr,150,150,150)
+      local ofs = (page-1)*onPage
+      for i=1,math.min(onPage,#manager.loaded) do
+        local ai = i+ofs
+        local v = manager.loaded[ai]
+        local av = manager.loaded[i]
+        if v==nil then break end
+        local cx = mx+menu.padding
+        local cy = my+menu.padding+toph+(menu.padding+cardh)*(i-1)+tabBarH
+        local cw,ch = mw-menu.padding*2, cardh
+        graphics.drawRect(cx,cy,cw,ch,255,255,255)
+        
+        local trx,try = 3,0
+        if v.icon then
+          local iconScale = 2
+          local iw,ih = binImgSize(v.icon)
+          iw = (iw+1)*iconScale
+          ih = (ih+1)*iconScale
+          binImgDraw(v.icon,trx+cx,math.floor(cy+ch/2-ih/2),iconScale)
+          trx = trx+iw+5
+        end
+        try = math.floor((ch/2)-((TEXTH*2+3)/2))
+        
+        local ta = v.info.name or v.path
+        local tb = 'by '..(v.info.creator or 'Uknown creator')
+        local tc = '(running)'
+        
+        graphics.drawText(cx+trx,cy+try,ta)
+        graphics.drawText(cx+trx,cy+try+TEXTH+3,tb,20,20,255)
+        if v.running then
+          graphics.drawText(
+            math.floor(cx+trx+tpt.textwidth(ta)+5),
+            math.floor(cy+try),
+            tc,20,200,20
+          )
+        end
+        
+        if mouseX>cx+trx and mouseY>cy+try and mouseX<cx+trx+tpt.textwidth(ta) and mouseY<cy+try+TEXTH*1.1 then
+          local desc = v.info.description or 'No description'
+          local _,lc = desc:gsub('\n','')
+          if v.info.version or v.info.versionString then
+            desc = string.format(
+              'Version: %s(%s)\n%s',
+              v.info.versionString or v.info.version or '?',
+              v.info.version or '?',
+              desc
+            )
+            lc = lc+1
+          end
+          local texth = (lc+1)*(TEXTH*1.8)
+          local textw = 0
+          for p in parts(desc,'\n') do
+            textw = math.max(textw,tpt.textwidth(p))
+          end
+          local boxw,boxh = textw+8,texth+8
+          local boxx,boxy = mouseX-boxw/2,mouseY-boxh-TEXTH
           graphics.fillRect(boxx,boxy,boxw,boxh,0,0,0)
           graphics.drawRect(boxx,boxy,boxw,boxh,255,255,255)
-          graphics.drawText(boxx+3,boxy+3,vt,200,200,255)
+          graphics.drawText(boxx+4,boxy+4,desc)
+        end
+        
+        --Verified icon
+        local isVerified = verifiedHashes[v.hash]
+        if isVerified then
+          local cx,cy = math.floor(cx+trx+tpt.textwidth(tb)+TEXTH),math.floor(cy+try+(TEXTH*1.5)+3)
+          local ro = math.floor(TEXTH/1.5)
+          graphics.fillCircle(cx,cy,ro,ro,20,30,230)
+          graphics.fillCircle(cx,cy,math.floor(TEXTH/2.5),math.floor(TEXTH/2.5),20,330,30)
+          if mouseX>cx-ro and mouseY>cy-ro and mouseX<cx+ro and mouseY<cy+ro then
+            local vt = 'Verified (hash: 0x'..bit.tohex(v.hash)..')'
+            local boxw,boxh = tpt.textwidth(vt)+6,TEXTH+8
+            local boxx,boxy = mouseX,mouseY-boxh
+            graphics.fillRect(boxx,boxy,boxw,boxh,0,0,0)
+            graphics.drawRect(boxx,boxy,boxw,boxh,255,255,255)
+            graphics.drawText(boxx+3,boxy+3,vt,200,200,255)
+          end
+        end
+        
+        if regenCardsUI then
+          UIadd(UIcheckbox((cw+cx)-mx-12*2,cy-my+(ch-12)/2,12,toRun[v.info.id],
+              function(self)
+                regenCardsUI = true
+                if self.on then
+                  local notifOn = false
+                  for i,v in ipairs(manager.notifications) do
+                    if v.idnt=='restartUnload' then
+                      notifOn = true
+                      break
+                    end
+                  end
+                  if not notifOn then
+                    local notif = {
+                      text='Restart The Powder Toy to disable script(s).',
+                      backgroundColor = {240,40,40,200},
+                      borderColor = {100,0,0},
+                      buttons={},
+                      idnt = 'restartUnload',
+                      life = nil,
+                    }
+                    notif.buttons[1] = {
+                      text='Dismiss',
+                      action = function(v,v2)
+                        v.life = 15
+                        v.fadeStart = 15
+                        v.fade = true
+                        v2.action=function() --[[v2.text = 'ok boomer']] end --no
+                      end
+                    }
+                    if os~='WIN32' then --disable restart on windows
+                      notif.buttons[2] = {
+                        text='Restart game',
+                        action = restart
+                      }
+                    end
+                    
+                    manager.pushNotification(notif)
+                  end
+                  toRun[v.info.id] = false
+                else
+                  toRun[v.info.id] = true
+                  v:run()
+                end
+                saveRun()
+              end,'cards'
+            )
+          )
+          --UIadd(UItext(
         end
       end
-      
-      if regenCardsUI then
-        UIadd(UIcheckbox((cw+cx)-mx-12*2,cy-my+(ch-12)/2,12,toRun[v.info.id],
-            function(self)
-              regenCardsUI = true
-              if self.on then
-                local notifOn = false
-                for i,v in ipairs(manager.notifications) do
-                  if v.idnt=='restartUnload' then
-                    notifOn = true
-                    break
-                  end
-                end
-                if not notifOn then
-                  local notif = {
-                    text='Restart The Powder Toy to disable script(s).',
-                    backgroundColor = {240,40,40,200},
-                    borderColor = {100,0,0},
-                    buttons={},
-                    idnt = 'restartUnload',
-                    life = nil,
-                  }
-                  notif.buttons[1] = {
-                    text='Dismiss',
-                    action = function(v,v2)
-                      v.life = 15
-                      v.fadeStart = 15
-                      v.fade = true
-                      v2.action=function() --[[v2.text = 'ok boomer']] end --no
-                    end
-                  }
-                  if os~='WIN32' then --disable restart on windows
-                    notif.buttons[2] = {
-                      text='Restart game',
-                      action = restart
-                    }
-                  end
-                  
-                  manager.pushNotification(notif)
-                end
-                toRun[v.info.id] = false
-              else
-                toRun[v.info.id] = true
-                v:run()
-              end
-              saveRun()
-            end,'cards'
-          )
-        )
-        --UIadd(UItext(
+    elseif tab==2 then
+      local r = 50
+      local x = mx+mw/2
+      local y = my+mh/2
+      local text = '=-=-=-=-=-=- W I P -=-=-=-=-=-='
+      local tx = mx+(mw-tpt.textwidth(text))/2
+      local ty = my+(mh-TEXTH)/2
+      graphics.drawCircle(x,y,math.sin(mouseX/100)*r,math.cos(mouseY/100)*r,0,255,0)
+      graphics.drawCircle(x,y,math.cos(mouseX/100)*r,math.sin(mouseY/100)*r,255,0,0)
+      graphics.drawCircle(x,y,math.sin(mouseY/100)*r,math.cos(mouseX/100)*r,0,255,255)
+      graphics.drawCircle(x,y,math.cos(mouseY/100)*r,math.sin(mouseX/100)*r,0,0,255)
+      do
+        local a = math.atan2(mouseX-x,mouseY-y)
+        local px,py = x,y
+        for i=1,r do
+          px = px+math.sin(a)
+          py = py+math.cos(a)
+          local c = (i/r)*255
+          local x2,y2 = (mouseX+py)/2,(mouseY+px)/2
+          graphics.drawLine(px,py,x2,y2,c,c,c)
+          graphics.drawLine(px,py,x2  ,y2-1,c,c,c)
+          graphics.drawLine(px,py,x2-1,y2-1,c,c,c)
+          graphics.drawLine(px,py,x2-1,y2  ,c,c,c)
+          graphics.drawLine(px,py,x2-1,y2-1,c,c,c)
+          graphics.drawLine(px,py,x2  ,y2-1,c,c,c)
+          graphics.drawLine(px,py,x2-1,y2-1,c,c,c)
+          graphics.drawLine(px,py,x2-1,y2  ,c,c,c)
+          graphics.drawLine(px,py,x2-1,y2-1,c,c,c)
+          graphics.drawCircle(px,py,i,i,c,c,c)
+          graphics.drawCircle(px,py,i+1,i+1,c,c,c)
+          graphics.drawCircle(px,py,i-1,i-1,c,c,c)
+        end
       end
+      graphics.drawText(tx,ty+r*2.25,text)
+      graphics.drawText(tx,ty-r*2.25,text)
     end
     
     for i,v in ipairs(menuButtons) do
@@ -963,6 +1038,23 @@ local function tick()
     regenUI = false
   end
 end
+
+manager.menu.tabs = {
+  {
+    text = 'Local scripts',
+    onSwitch = function() 
+      regenCardsUI = true
+      regenUI = true
+    end
+  },
+  {
+    text = 'FUN',
+    onSwitch = function() 
+      UIdeleteClass(UIgetClass'cards')
+      UIdeleteClass(UIgetClass'navigation')
+    end
+  }
+}
 
 local menuDrag
 local function mousemove(x,y,dx,dy)
