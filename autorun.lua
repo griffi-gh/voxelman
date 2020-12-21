@@ -4,7 +4,7 @@ local type = type
 
 local regenCardsUI,regenUI,regenTabUI = true,true,true
 
-manager = {
+local manager = { --was global
   dir = 'scripts/',
   sdir = 'lua/',
   button={
@@ -25,14 +25,14 @@ manager = {
     padding = 5,
     onPage = 8,
     page = 1,
-    tab = 1,
+    tab = 'local',
   },
   loaded = {},
+  toRun = {},
   TPTMPSupport = true,
   lowTickPriority = false,
   loadVerifiedHashes = true,
 }
-local toRun = {}
 
 local fileRegex = '[^/\\]+$'
 local extRegex = '.[^.]+$'
@@ -126,7 +126,6 @@ local function varParse(d,sep)
             elseif typ=='tbl' then
               if c=="}" then
                 fv = varParse(tv,',')
-                print(tv)
               else
                 tv = tv..c
               end
@@ -388,7 +387,7 @@ end
 
 local function runAll()
   for i,v in ipairs(manager.loaded) do
-    if toRun[v.info.id] and not(v.running) then
+    if manager.toRun[v.info.id] and not(v.running) then
       v:run()
     end
   end
@@ -625,7 +624,7 @@ end
 local function saveRun()
   local p = epth(manager.dir)..'run.var'
   local f = io.open(p,'wb')
-  f:write(varEncode(toRun))
+  f:write(varEncode(manager.toRun))
   f:close()
 end
 
@@ -656,7 +655,6 @@ local function tick()
     local stat = verifiedHashesReq:status()
     if stat=='done' then
       local d = verifiedHashesReq:finish()
-      --print(type(d),d)
       if type(d)=='string' and #d>1 then
         local l = varParse(d)
         for i,v in pairs(l) do
@@ -798,6 +796,14 @@ local function tick()
     graphics.drawLine(mx,my+toph+tabBarH,mx+mw-1,my+toph+tabBarH) -- tab sep
     
     local tab = manager.menu.tab
+    local tabt
+    for i,v in ipairs(manager.menu.tabs) do
+      if v.id==tab then
+        tabt = v
+        break
+      end
+    end
+    
     do
       local x = mx+2
       local y = my+toph+tabBarH
@@ -805,7 +811,7 @@ local function tick()
         UIdeleteClass(UIgetClass'tab')
       end
       for i,v in ipairs(manager.menu.tabs) do
-        local s = tab==i
+        local s = tab==v.id
         local w = tpt.textwidth(v.text)+6
         local h = (s and stabh or tabh)
         local c = s and 64 or 0
@@ -817,12 +823,12 @@ local function tick()
             UIhitbox(
               x-mx,y-h+1-my,w,h,nil,
               function() 
-                local o = manager.menu.tabs[manager.menu.tab]
-                if o.onSwitchFrom then o:onSwitchFrom() end
+                if tabt.onSwitchFrom then tabt:onSwitchFrom() end
                 if v.onSwitchTo then v:onSwitchTo() end
-                manager.menu.tab = i 
+                manager.menu.tab = v.id 
                 regenTabUI = true
-              end,'tab'
+              end,
+              'tab'
             )
           )
         end
@@ -831,7 +837,7 @@ local function tick()
     end
     regenTabUI = false
     
-    if tab==1 then
+    if tab=='local' then
       local cardh = 32
       local page,onPage = manager.menu.page,manager.menu.onPage
       local pagestr = string.format("Page: %s/%s",page,manager.menu.pageCount)
@@ -914,7 +920,7 @@ local function tick()
         end
         
         if regenCardsUI then
-          UIadd(UIcheckbox((cw+cx)-mx-12*2,cy-my+(ch-12)/2,12,toRun[v.info.id],
+          UIadd(UIcheckbox((cw+cx)-mx-12*2,cy-my+(ch-12)/2,12,manager.toRun[v.info.id],
               function(self)
                 regenCardsUI = true
                 if self.on then
@@ -952,9 +958,9 @@ local function tick()
                     
                     manager.pushNotification(notif)
                   end
-                  toRun[v.info.id] = false
+                  manager.toRun[v.info.id] = false
                 else
-                  toRun[v.info.id] = true
+                  manager.toRun[v.info.id] = true
                   v:run()
                 end
                 saveRun()
@@ -964,7 +970,7 @@ local function tick()
           --UIadd(UItext(
         end
       end
-    elseif tab==2 then
+    elseif tab=='fun' then
       local r = 50
       local x = mx+mw/2
       local y = my+mh/2
@@ -1042,6 +1048,7 @@ end
 manager.menu.tabs = {
   {
     text = 'Local scripts',
+    id = 'local',
     onSwitchTo = function() 
       regenCardsUI = true
       regenUI = true
@@ -1052,6 +1059,7 @@ manager.menu.tabs = {
     end
   },
   {
+    id = 'fun',
     text = 'FUN'
   }
 }
@@ -1118,7 +1126,12 @@ local function mouseup(x,y,b)
           manager.menu.open = true
         end
       else
-        print('minimize TPTMP before opening the manager') --text stolen from Cracker64's autorun lol
+        manager.pushNotification{
+          text = 'minimize TPTMP before opening the manager',
+          life = 60,
+          fade = true,
+          fadeStart = 10
+        }
       end
     end
     if manager.menu.open then
@@ -1154,11 +1167,11 @@ loadDirectory(manager.dir..manager.sdir,true,false)
 local run = io.open(epth(manager.dir)..'run.var','rb')
 if run then
   local p = varParse(run:read('*a'))
-  toRun = {}
+  manager.toRun = {}
   for i,v in ipairs(manager.loaded) do --remove/add missing scripts
     local r = p[v.info.id] 
     if r==nil then r = false end
-    toRun[v.info.id] = r
+    manager.toRun[v.info.id] = r
   end
 else
   run = io.open(epth(manager.dir)..'run.var','wb')
@@ -1175,4 +1188,70 @@ manager.pushNotification{
 
 runAll()
 
+local function str(v)
+  local t = type(v)
+  if t=='string' or t=='number' then 
+    return tostring(v)
+  elseif tt=='bool' then
+    return (t and 'true' or 'false')
+  end
+end
+
+_G.voxelman = {
+  pushNotification = function(t)
+    local tt = type(t)
+    if tt~='table' then
+      t = {text = str(t)}
+    end
+    if tt=='table' then
+      manager.pushNotification(t)
+    end
+    return {
+      setText = function(t)
+        local s = str(t)
+        if type(s)=='string' then
+          t.text = s
+        end
+      end,
+      close = function()
+        t.life = 0
+        t.fade = false
+        t.fadeStart = 0
+      end
+    }
+  end,
+  
+  isMenuOpen = function()
+    return manager.menu.open
+  end,
+  openMenu = function()
+    manager.menu.open = true
+  end,
+  closeMenu = function()
+    manager.menu.open = false
+  end,
+  moveMenu = function(x,y)
+    if type(x)=='number' then
+      manager.menu.x = x
+    end
+    if type(y)=='number' then
+      manager.menu.y = y
+    end
+  end,
+  resizeMenu = function(w,h)
+    if type(w)=='number' then
+      manager.menu.w = w
+    end
+    if type(h)=='number' then
+      manager.menu.h = h
+    end
+  end,
+  
+  getScriptsDirectory = function()
+    return manager.dir
+  end,
+  getUserScriptsDirectory = function()
+    return manager.dir..manager.sdir
+  end,
+}
 ----- end -----
