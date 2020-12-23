@@ -1,10 +1,13 @@
 -----start-----
+assert(tpt,'VOXELMAN Requires TPT API')
+assert(graphics and event,'VOXELMAN Requires **new** TPT API')
+
 local TEXTH = 6
 local type = type
 
 local regenCardsUI,regenUI,regenTabUI = true,true,true
 
-local manager = { --was global
+local manager = {
   dir = 'scripts/',
   sdir = 'lua/',
   button={
@@ -20,26 +23,26 @@ local manager = { --was global
     x = false,
     y = false, 
     w = 300,
-    h = 332,--350,
+    h = 332,
+    tab = 'local',
+    --local
     toph = 12,
     padding = 5,
     onPage = 8,
     page = 1,
-    tab = 'local',
   },
   loaded = {},
   toRun = {},
   TPTMPSupport = true,
-  lowTickPriority = false,
   loadVerifiedHashes = true,
 }
 
 local fileRegex = '[^/\\]+$'
 local extRegex = '.[^.]+$'
 
-local exeName,os
+local exeName,userOS
 if platform then
-  os = platform.platform()
+  userOS = platform.platform()
   exeName = platform.exeName
   if type(exeName)=='function' then
     exeName = exeName()
@@ -47,10 +50,10 @@ if platform then
 end
 
 local function restart()
-  if not(platform) then
-    os.exit()
-  elseif os=='WIN32' then
+  if userOS=='WIN32' then
     while true do tpt.throw_error('Please restart game manually') end
+  elseif not(platform) then
+    os.exit()
   else
     platform.restart()
   end
@@ -59,7 +62,7 @@ end
 local verifiedHashesUrl = 'https://pastebin.com/raw/ucag570u'
 local verifiedHashes = {}
 local verifiedHashesReq
-if manager.loadVerifiedHashes then
+if http and manager.loadVerifiedHashes then
   verifiedHashesReq = http.get(verifiedHashesUrl)
 end
 
@@ -84,6 +87,7 @@ do
     return crc
   end
 end
+--
 
 local function parts(i,s)
   return string.gmatch(i..s,'(.-)'..s)
@@ -319,15 +323,19 @@ end
 local function loadScriptTmp(p)
   if fs.isDirectory(p) then
     p = epth(p) --add "/" if missing
-    local f = assert(io.open(p..'info.var'),'Missing info.var'):read('*a')
+    local fh = assert(io.open(p..'info.var'),'Missing info.var')
+    local f = fh:read('*a')
     local ok,info = pcall(varParse,f)
+    fh:close()
     assert(ok and info,'Invalid info.var')
     assert(info.run,'Missing variable in info.var')
     local t = {}
     info.run = info.run:gsub('/',''):gsub('\\','')
     if info.icon then
       info.icon = info.icon:gsub('/',''):gsub('\\','')
-      t.icon = io.open(p..info.icon,'rb'):read('*a')
+      local file = io.open(p..info.icon,'rb')
+      t.icon = file:read('*a')
+      file:close()
     end
     t.info = info
     t.path = p
@@ -643,13 +651,13 @@ local function buttonCollision(x,y)
   end
 end
 
+--[[local function postTick()
+  event.unregister(event.tick,postTick)
+  event.register(event.tick,postTick)
+end]]
+
 local function tick()
   manager.menu.pageCount = math.ceil((#manager.loaded)/9)
-  
-  if manager.lowTickPriority then
-    event.unregister(event.tick,tick)
-    event.register(event.tick,tick)
-  end
   
   if manager.loadVerifiedHashes and verifiedHashesReq then
     local stat = verifiedHashesReq:status()
@@ -786,8 +794,9 @@ local function tick()
       UIadd(UIbutton(mw-toph,0,toph,toph,'X',function() menu.open=false end,'exitbtn'))
     end
     
-    local tabBarH = 16
-    local tabh,stabh = 14,15
+    local tabpad = 4
+    local tabh,stabh = 14,16
+    local tabBarH = stabh+tabpad-1
     
     graphics.fillRect(mx,my,mw,mh,0,0,0) --Bg
     graphics.drawRect(mx,my,mw,toph,255,255,255) --title bar
@@ -805,23 +814,25 @@ local function tick()
     end
     
     do
-      local x = mx+2
+      local tabsp = 6
+      local x = mx+tabpad
       local y = my+toph+tabBarH
       if regenTabUI then
         UIdeleteClass(UIgetClass'tab')
       end
       for i,v in ipairs(manager.menu.tabs) do
         local s = tab==v.id
-        local w = tpt.textwidth(v.text)+6
+        local w = tpt.textwidth(v.text)+tabsp*2
         local h = (s and stabh or tabh)
         local c = s and 64 or 0
-        graphics.fillRect(x,y-h+1,w,h,c,c,c)
-        graphics.drawRect(x,y-h+1,w,h)
-        graphics.drawText(x+3,y-math.abs(TEXTH-h)-1,v.text)
+        local ay = y-h+1
+        graphics.fillRect(x,ay,w,h,c,c,c)
+        graphics.drawRect(x,ay,w,h)
+        graphics.drawText(x+tabsp,math.floor(ay+(h-TEXTH)/2)-1,v.text)
         if regenTabUI then
           UIadd(
             UIhitbox(
-              x-mx,y-h+1-my,w,h,nil,
+              x-mx,ay-my,w,h,nil,
               function() 
                 if tabt.onSwitchFrom then tabt:onSwitchFrom() end
                 if v.onSwitchTo then v:onSwitchTo() end
@@ -832,25 +843,30 @@ local function tick()
             )
           )
         end
-        x = x+w
+        x = x+w-1
       end
     end
     regenTabUI = false
+    
+    local cnx,cny = mx+menu.padding, my+menu.padding+toph+tabBarH
+    local cnw,cnh = mw-menu.padding-(cnx-mx),mh-menu.padding-(cny-my)
     
     if tab=='local' then
       local cardh = 32
       local page,onPage = manager.menu.page,manager.menu.onPage
       local pagestr = string.format("Page: %s/%s",page,manager.menu.pageCount)
-      graphics.drawText(mx+mw-toph-tpt.textwidth(pagestr)-4,my+TEXTH/2,pagestr,150,150,150)
+      --graphics.drawText(mx+mw-toph-tpt.textwidth(pagestr)-4,my+TEXTH/2,pagestr,150,150,150)
+      graphics.drawText(mx+(mw-tpt.textwidth(pagestr))/2,my+mh-14,pagestr,255,255,255)
+        
       local ofs = (page-1)*onPage
       for i=1,math.min(onPage,#manager.loaded) do
         local ai = i+ofs
         local v = manager.loaded[ai]
         local av = manager.loaded[i]
         if v==nil then break end
-        local cx = mx+menu.padding
-        local cy = my+menu.padding+toph+(menu.padding+cardh)*(i-1)+tabBarH
-        local cw,ch = mw-menu.padding*2, cardh
+        local cx = cnx
+        local cy = cny+(menu.padding+cardh)*(i-1)
+        local cw,ch = cnw, cardh
         graphics.drawRect(cx,cy,cw,ch,255,255,255)
         
         local trx,try = 3,0
@@ -949,7 +965,7 @@ local function tick()
                         v2.action=function() --[[v2.text = 'ok boomer']] end --no
                       end
                     }
-                    if os~='WIN32' then --disable restart on windows
+                    if userOS~='WIN32' then --disable restart on windows
                       notif.buttons[2] = {
                         text='Restart game',
                         action = restart
@@ -970,41 +986,8 @@ local function tick()
           --UIadd(UItext(
         end
       end
-    elseif tab=='fun' then
-      local r = 50
-      local x = mx+mw/2
-      local y = my+mh/2
-      local text = '=-=-=-=-=-=- W I P -=-=-=-=-=-='
-      local tx = mx+(mw-tpt.textwidth(text))/2
-      local ty = my+(mh-TEXTH)/2
-      graphics.drawCircle(x,y,math.sin(mouseX/100)*r,math.cos(mouseY/100)*r,0,255,0)
-      graphics.drawCircle(x,y,math.cos(mouseX/100)*r,math.sin(mouseY/100)*r,255,0,0)
-      graphics.drawCircle(x,y,math.sin(mouseY/100)*r,math.cos(mouseX/100)*r,0,255,255)
-      graphics.drawCircle(x,y,math.cos(mouseY/100)*r,math.sin(mouseX/100)*r,0,0,255)
-      do
-        local a = math.atan2(mouseX-x,mouseY-y)
-        local px,py = x,y
-        for i=1,r do
-          px = px+math.sin(a)
-          py = py+math.cos(a)
-          local c = (i/r)*255
-          local x2,y2 = (mouseX+py)/2,(mouseY+px)/2
-          graphics.drawLine(px,py,x2,y2,c,c,c)
-          graphics.drawLine(px,py,x2  ,y2-1,c,c,c)
-          graphics.drawLine(px,py,x2-1,y2-1,c,c,c)
-          graphics.drawLine(px,py,x2-1,y2  ,c,c,c)
-          graphics.drawLine(px,py,x2-1,y2-1,c,c,c)
-          graphics.drawLine(px,py,x2  ,y2-1,c,c,c)
-          graphics.drawLine(px,py,x2-1,y2-1,c,c,c)
-          graphics.drawLine(px,py,x2-1,y2  ,c,c,c)
-          graphics.drawLine(px,py,x2-1,y2-1,c,c,c)
-          graphics.drawCircle(px,py,i,i,c,c,c)
-          graphics.drawCircle(px,py,i+1,i+1,c,c,c)
-          graphics.drawCircle(px,py,i-1,i-1,c,c,c)
-        end
-      end
-      graphics.drawText(tx,ty+r*2.25,text)
-      graphics.drawText(tx,ty-r*2.25,text)
+    elseif tab=='online' then
+      graphics.drawText(cnx,cny,'Coming soon')
     end
     
     for i,v in ipairs(menuButtons) do
@@ -1039,7 +1022,7 @@ local function tick()
         end
       end
     end
-    if regenCardsUI or regenUI then buttonCollision(mouseX,mouseY) end
+    if regenCardsUI or regenUI or regenTabUI then buttonCollision(mouseX,mouseY) end
     regenCardsUI = false
     regenUI = false
   end
@@ -1059,9 +1042,17 @@ manager.menu.tabs = {
     end
   },
   {
-    id = 'fun',
-    text = 'FUN'
+    text = 'Online scripts',
+    id = 'online'
   }
+  --[[{
+    text = 'Screenshots',
+    id = 'screenshots'
+  },
+  {
+    text = 'FUN',
+    id = 'fun'
+  }]]
 }
 
 local menuDrag
@@ -1253,5 +1244,25 @@ _G.voxelman = {
   getUserScriptsDirectory = function()
     return manager.dir..manager.sdir
   end,
+  
+  isButtonShown = function()
+    return manager.button.show
+  end,
+  showButton = function()
+    manager.button.show = true
+  end,
+  hideButton = function()
+    manager.button.show = false
+  end,
+  moveButton = function(x,y)
+    if type(x)=='number' then
+      manager.button.x = x
+    end
+    if type(y)=='number' then
+      manager.button.y = y
+    end
+  end,
 }
+
+collectgarbage("collect")
 ----- end -----
