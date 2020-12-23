@@ -1,11 +1,8 @@
 -----start-----
-assert(tpt,'VOXELMAN Requires TPT API')
-assert(graphics and event,'VOXELMAN Requires **new** TPT API')
+assert(tpt and graphics and event,'VOXELMAN requires The Powder Toy Lua API')
 
 local TEXTH = 6
 local type = type
-
-local regenCardsUI,regenUI,regenTabUI = true,true,true
 
 local manager = {
   dir = 'scripts/',
@@ -25,17 +22,16 @@ local manager = {
     w = 300,
     h = 332,
     tab = 'local',
-    --local
     toph = 12,
     padding = 5,
-    onPage = 8,
-    page = 1,
   },
   loaded = {},
   toRun = {},
   TPTMPSupport = true,
   loadVerifiedHashes = true,
 }
+
+local regenTabUI = true
 
 local fileRegex = '[^/\\]+$'
 local extRegex = '.[^.]+$'
@@ -639,6 +635,7 @@ end
 local mup = 0
 
 local function buttonCollision(x,y)
+  --print(x,y)
   for i,v in ipairs(menuButtons) do
     v.hit = (
               v.x>=0 and v.y>=0 and v.x<=manager.menu.w and v.y<=manager.menu.h and
@@ -655,10 +652,15 @@ end
   event.unregister(event.tick,postTick)
   event.register(event.tick,postTick)
 end]]
+local function getTab(tab)
+  for i,v in ipairs(manager.menu.tabs) do
+    if v.id==tab then
+      return v
+    end
+  end
+end
 
 local function tick()
-  manager.menu.pageCount = math.ceil((#manager.loaded)/9)
-  
   if manager.loadVerifiedHashes and verifiedHashesReq then
     local stat = verifiedHashesReq:status()
     if stat=='done' then
@@ -758,41 +760,6 @@ local function tick()
     local menu = manager.menu
     local mx,my,mw,mh = menu.x,menu.y,menu.w,menu.h
     local toph = menu.toph
-    if regenCardsUI then
-      UIdeleteClass(UIgetClass'cards')
-    end
-    
-    if regenUI then
-      UIdeleteClass(UIgetClass'navigation')
-      local l = UIbutton(
-          5,mh-19,45,15,'<< Prev',
-          function() 
-            menu.page = menu.page-1 
-            regenCardsUI = true 
-            regenUI = true
-          end,
-          'navigation'
-        )
-      local r = UIbutton(
-          mw-50,mh-19,45,15,'Next >>',
-          function() 
-            menu.page = menu.page+1 
-            regenCardsUI = true
-            regenUI = true
-          end,
-          'navigation'
-        )
-      if manager.menu.page>=manager.menu.pageCount then 
-        r.disabled = true
-      end
-      if manager.menu.page<=1 then
-        l.disabled = true
-      end
-      UIadd(l)
-      UIadd(r)
-      UIdeleteClass(UIgetClass'exitbtn')
-      UIadd(UIbutton(mw-toph,0,toph,toph,'X',function() menu.open=false end,'exitbtn'))
-    end
     
     local tabpad = 4
     local tabh,stabh = 14,16
@@ -805,13 +772,7 @@ local function tick()
     graphics.drawLine(mx,my+toph+tabBarH,mx+mw-1,my+toph+tabBarH) -- tab sep
     
     local tab = manager.menu.tab
-    local tabt
-    for i,v in ipairs(manager.menu.tabs) do
-      if v.id==tab then
-        tabt = v
-        break
-      end
-    end
+    local tabt = getTab(tab)
     
     do
       local tabsp = 6
@@ -845,16 +806,50 @@ local function tick()
         end
         x = x+w-1
       end
+      regenTabUI = false
     end
-    regenTabUI = false
     
     local cnx,cny = mx+menu.padding, my+menu.padding+toph+tabBarH
     local cnw,cnh = mw-menu.padding-(cnx-mx),mh-menu.padding-(cny-my)
     
     if tab=='local' then
+      tabt.var.pageCount = math.max(1,math.ceil((#manager.loaded)/9))
+      if tabt.var.regenCardsUI then
+        UIdeleteClass(UIgetClass'local_cards')
+      end
+      if tabt.var.regenNavUI then
+        UIdeleteClass(UIgetClass'local_navigation')
+        local l = UIbutton(
+            5,mh-19,45,15,'<< Prev',
+            function() 
+              menu.page = menu.page-1 
+              tabt.var.regenCardsUI = true 
+              tabt.var.regenNavUI = true
+            end,
+            'local_navigation'
+          )
+        local r = UIbutton(
+            mw-50,mh-19,45,15,'Next >>',
+            function() 
+              menu.page = menu.page+1 
+              regenLocalCardsUI = true
+              regenLocalUI = true
+            end,
+            'local_navigation'
+          )
+        if tabt.var.page>=tabt.var.pageCount then 
+          r.disabled = true
+        end
+        if tabt.var.page<=1 then
+          l.disabled = true
+        end
+        UIadd(l)
+        UIadd(r)
+      end
+      
       local cardh = 32
-      local page,onPage = manager.menu.page,manager.menu.onPage
-      local pagestr = string.format("Page: %s/%s",page,manager.menu.pageCount)
+      local page,onPage = tabt.var.page,tabt.var.onPage
+      local pagestr = string.format("Page: %s/%s",page,tabt.var.pageCount)
       --graphics.drawText(mx+mw-toph-tpt.textwidth(pagestr)-4,my+TEXTH/2,pagestr,150,150,150)
       graphics.drawText(mx+(mw-tpt.textwidth(pagestr))/2,my+mh-14,pagestr,255,255,255)
         
@@ -935,10 +930,10 @@ local function tick()
           end
         end
         
-        if regenCardsUI then
+        if tabt.var.regenCardsUI then
           UIadd(UIcheckbox((cw+cx)-mx-12*2,cy-my+(ch-12)/2,12,manager.toRun[v.info.id],
               function(self)
-                regenCardsUI = true
+                tabt.var.regenCardsUI = true
                 if self.on then
                   local notifOn = false
                   for i,v in ipairs(manager.notifications) do
@@ -980,11 +975,16 @@ local function tick()
                   v:run()
                 end
                 saveRun()
-              end,'cards'
+              end,'local_cards'
             )
           )
           --UIadd(UItext(
         end
+      end
+      if tabt.var.regenCardsUI or tabt.var.regenNavUI then
+        tabt.var.regenCardsUI = false
+        tabt.var.regenNavUI = false
+        buttonCollision(mouseX,mouseY)
       end
     elseif tab=='online' then
       graphics.drawText(cnx,cny,'Coming soon')
@@ -1022,9 +1022,6 @@ local function tick()
         end
       end
     end
-    if regenCardsUI or regenUI or regenTabUI then buttonCollision(mouseX,mouseY) end
-    regenCardsUI = false
-    regenUI = false
   end
 end
 
@@ -1032,27 +1029,26 @@ manager.menu.tabs = {
   {
     text = 'Local scripts',
     id = 'local',
-    onSwitchTo = function() 
-      regenCardsUI = true
-      regenUI = true
+    onSwitchTo = function(self) 
+      self.var.regenCardsUI = true
+      self.var.regenNavUI = true
     end,
-    onSwitchFrom = function()
-      UIdeleteClass(UIgetClass'cards')
-      UIdeleteClass(UIgetClass'navigation')
-    end
+    onSwitchFrom = function(self)
+      UIdeleteClass(UIgetClass'local_cards')
+      UIdeleteClass(UIgetClass'local_navigation')
+    end,
+    var = {
+      regenCardsUI = false,
+      regenNavUI = false,
+      onPage = 8,
+      page = 1,
+    }
   },
   {
     text = 'Online scripts',
-    id = 'online'
+    id = 'online',
+    var = {}
   }
-  --[[{
-    text = 'Screenshots',
-    id = 'screenshots'
-  },
-  {
-    text = 'FUN',
-    id = 'fun'
-  }]]
 }
 
 local menuDrag
@@ -1088,6 +1084,7 @@ local function mousedown(x,y,b)
     end
     mouseDown = true
     if manager.menu.open then
+      buttonCollision(x,y)
       for i,v in ipairs(menuButtons) do
         if v.hit then
           v.down = true
@@ -1095,7 +1092,6 @@ local function mousedown(x,y,b)
       end
     end
   end
-  buttonCollision(x,y)
   if clickNotifications(b,false) or manager.menu.open then return false end
 end
 
@@ -1126,6 +1122,7 @@ local function mouseup(x,y,b)
       end
     end
     if manager.menu.open then
+      buttonCollision(x,y)
       for i,v in ipairs(menuButtons) do
         if not(v.disabled) and v.hit and v.down then
           if v.onClick then
@@ -1139,7 +1136,6 @@ local function mouseup(x,y,b)
       end
     end
   end
-  buttonCollision(x,y)
   if clickNotifications(b,true) or manager.menu.open then return false end
 end
 
@@ -1263,6 +1259,15 @@ _G.voxelman = {
     end
   end,
 }
+
+UIadd(
+  UIbutton(
+    manager.menu.w-manager.menu.toph,0,
+    manager.menu.toph,manager.menu.toph,
+    'X',function() manager.menu.open=false end,'exitbtn'
+  )
+)
+manager.menu.tabs[1]:onSwitchTo()
 
 collectgarbage("collect")
 ----- end -----
