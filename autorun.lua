@@ -60,7 +60,7 @@ end
 local verifiedHashes = {}
 
 local updateCheckUrl = 'https://raw.githubusercontent.com/griffi-gh/voxelman/main/LATEST'
-local updateDownloadUrl = 'https://github.com/griffi-gh/voxelman/blob/main/autorun.lua'
+local updateDownloadUrl = 'https://raw.githubusercontent.com/griffi-gh/voxelman/main/autorun.lua'
 local verifiedHashesUrl = 'https://pastebin.com/raw/ucag570u'
 
 local verifiedHashesReqm,updateChkReq
