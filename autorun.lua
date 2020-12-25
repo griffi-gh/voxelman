@@ -30,6 +30,7 @@ local manager = {
   toRun = {},
   TPTMPSupport = true,
   loadVerifiedHashes = true,
+  updateCheck = true,
 }
 
 local regenTabUI = true
@@ -56,11 +57,20 @@ local function restart()
   end
 end
 
-local verifiedHashesUrl = 'https://pastebin.com/raw/ucag570u'
 local verifiedHashes = {}
-local verifiedHashesReq
-if http and manager.loadVerifiedHashes then
-  verifiedHashesReq = http.get(verifiedHashesUrl)
+
+local updateCheckUrl = 'https://raw.githubusercontent.com/griffi-gh/voxelman/main/LATEST'
+local updateDownloadUrl = 'https://github.com/griffi-gh/voxelman/blob/main/autorun.lua'
+local verifiedHashesUrl = 'https://pastebin.com/raw/ucag570u'
+
+local verifiedHashesReqm,updateChkReq
+if http then
+  if manager.loadVerifiedHashes then
+    verifiedHashesReq = http.get(verifiedHashesUrl)
+  end
+  if manager.updateCheck then
+    updateChkReq = http.get(updateCheckUrl)
+  end
 end
 
 local hash
@@ -662,6 +672,70 @@ local function getTab(tab)
 end
 
 local function tick()
+  if manager.updateCheck and updateChkReq then
+    local stat = updateChkReq:status()
+    if stat=='done' then
+      local d,c = updateChkReq:finish()
+      if c==200 then
+        local v = tonumber(d)
+        if v>manager.versionID then
+          manager.pushNotification{
+            text = 'Voxelman update available!',
+            backgroundColor = {250,170,0,200},
+            borderColor = {250,150,0,200},
+            buttonHoverColor = {255,180,10,250},
+            buttonHoldColor = {255,240,80,255},
+            buttons = {
+              {
+                text = 'Open GitHub page',
+                action = function()
+                  platform.openLink("https://github.com/griffi-gh/voxelman/")
+                end
+              },
+              {
+                text = 'Download update',
+                action = function()
+                  local ok
+                  local req = http.get(updateDownloadUrl)
+                  repeat socket.sleep(.1) until(req:status()~='running')
+                  if req:status()=='done' then
+                    local d,c = req:finish()
+                    if c==200 then
+                      fs.copy('autorun.lua','autorun.lua.bak')
+                      local a = io.open('autorun.lua','wb')
+                      a:write(d)
+                      a:close()
+                      ok = true
+                    end
+                  end
+                  if ok==true then
+                    manager.pushNotification{
+                      text = 'Update installed successfully; Please restart The Powder Toy'
+                    }
+                  else
+                    manager.pushNotification{
+                      text = 'Update failed'
+                    }
+                  end
+                end
+              },
+              {
+                text = 'Dismiss',
+                action = function(self)
+                  self.fade = true
+                  self.fadeStart = 15
+                  self.life = 15
+                end
+              }
+            }
+          }
+        end
+      end
+      updateChkReq = nil
+    elseif stat=='dead' then
+      updateChkReq = nil
+    end
+  end
   if manager.loadVerifiedHashes and verifiedHashesReq then
     local stat = verifiedHashesReq:status()
     if stat=='done' then
