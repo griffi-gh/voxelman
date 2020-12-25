@@ -20,7 +20,7 @@ local manager = {
     x = false,
     y = false, 
     w = 300,
-    h = 332,
+    h = 313,
     tab = 'local',
     toph = 12,
     padding = 5,
@@ -785,8 +785,9 @@ local function tick()
         local s = tab==v.id
         local w = tpt.textwidth(v.text)+tabsp*2
         local h = (s and stabh or tabh)
-        local c = s and 64 or 0
         local ay = y-h+1
+        local hov = mouseX>=x and mouseY>=ay and mouseX<x+w and mouseY<ay+h
+        local c = s and 64 or (hov and 30 or 0)
         graphics.fillRect(x,ay,w,h,c,c,c)
         graphics.drawRect(x,ay,w,h)
         graphics.drawText(x+tabsp,math.floor(ay+(h-TEXTH)/2)-1,v.text)
@@ -812,8 +813,21 @@ local function tick()
     local cnx,cny = mx+menu.padding, my+menu.padding+toph+tabBarH
     local cnw,cnh = mw-menu.padding-(cnx-mx),mh-menu.padding-(cny-my)
     
+    do
+      local cx,cy = math.floor(mx+mw/2),math.floor(cny+cnh/2)
+      local r1,r2 = 30,10
+      local x1,y1 = cx,cy
+      local x2 = math.floor(cx+math.cos(os.clock())*(r1+r2*1.5))
+      local y2 = math.floor(cy+math.sin(os.clock())*(r1+r2*1.5))
+      local c = 20
+      graphics.fillCircle(x1,y1,r1,r1,c,c,c)
+      graphics.fillCircle(x1+r1*.4,y1-r1*.4,r1/3,r1/3,0,0,0)
+      graphics.drawCircle(x1,y1,r1+(r2*1.5),r1+(r2*1.5),c,c,c)
+      graphics.fillCircle(x2,y2,r2,r2,c,c,c)
+    end
+    
     if tab=='local' then
-      tabt.var.pageCount = math.max(1,math.ceil((#manager.loaded)/9))
+      tabt.var.pageCount = math.max(1,math.ceil((#manager.loaded)/tabt.var.onPage))
       if tabt.var.regenCardsUI then
         UIdeleteClass(UIgetClass'local_cards')
       end
@@ -822,7 +836,7 @@ local function tick()
         local l = UIbutton(
             5,mh-19,45,15,'<< Prev',
             function() 
-              menu.page = menu.page-1 
+              tabt.var.page = tabt.var.page-1
               tabt.var.regenCardsUI = true 
               tabt.var.regenNavUI = true
             end,
@@ -831,9 +845,9 @@ local function tick()
         local r = UIbutton(
             mw-50,mh-19,45,15,'Next >>',
             function() 
-              menu.page = menu.page+1 
-              regenLocalCardsUI = true
-              regenLocalUI = true
+              tabt.var.page = tabt.var.page+1 
+              tabt.var.regenCardsUI = true 
+              tabt.var.regenNavUI = true
             end,
             'local_navigation'
           )
@@ -862,6 +876,10 @@ local function tick()
         local cx = cnx
         local cy = cny+(menu.padding+cardh)*(i-1)
         local cw,ch = cnw, cardh
+        
+        if mouseX>=cx and mouseY>=cy and mouseX<cx+cw and mouseY<cy+ch then
+          graphics.fillRect(cx,cy,cw,ch,255,255,255,20)
+        end
         graphics.drawRect(cx,cy,cw,ch,255,255,255)
         
         local trx,try = 3,0
@@ -1040,7 +1058,7 @@ manager.menu.tabs = {
     var = {
       regenCardsUI = false,
       regenNavUI = false,
-      onPage = 8,
+      onPage = 7,
       page = 1,
     }
   },
@@ -1258,6 +1276,8 @@ _G.voxelman = {
       manager.button.y = y
     end
   end,
+  
+  ex = manager
 }
 
 UIadd(
