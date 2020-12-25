@@ -5,6 +5,7 @@ local TEXTH = 6
 local type = type
 
 local manager = {
+  versionID = 2,
   dir = 'scripts/',
   sdir = 'lua/',
   button={
@@ -1275,9 +1276,7 @@ _G.voxelman = {
     if type(y)=='number' then
       manager.button.y = y
     end
-  end,
-  
-  ex = manager
+  end
 }
 
 UIadd(
