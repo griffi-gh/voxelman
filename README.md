@@ -2,6 +2,7 @@
 Powder toy LUA script manager
 
 ## Installation
+Download autorun.lua file or
 1) Press "~" key
 2) Copy:
 ```lua
