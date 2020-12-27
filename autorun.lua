@@ -3,9 +3,10 @@ assert(tpt and graphics and event,'VOXELMAN requires The Powder Toy Lua API')
 
 local TEXTH = 6
 local type = type
+local jmod = tpt.version.jacob1s_mod~=nil
 
 local manager = {
-  versionID = 2,
+  versionID = 3,
   dir = 'scripts/',
   sdir = 'lua/',
   button={
@@ -797,10 +798,10 @@ local function tick()
     iconHover = mouseX>bx and mouseY>by and mouseX<bx+bs and mouseY<by+bs
     if iconDown or manager.menu.open then
       c1,c2,c3 = 255,255,20
-    elseif iconHover then
+    elseif iconHover and not(jmod) then
       c1,c2,c3 = 20,255,235
     else
-      c1,c2,c3 = 0,200,235
+      c1,c2,c3 = 0,(jmod and 255 or 200),235
     end
     graphics.fillRect(bx,by,bs,bs,c1,c1,c1) --Button background
     graphics.drawRect(bx,by,bs,bs,c2,c2,c2) --Button border
@@ -1361,6 +1362,10 @@ UIadd(
   )
 )
 manager.menu.tabs[1]:onSwitchTo()
+
+if jmod then
+  manager.button.y = manager.button.y+16
+end
 
 collectgarbage("collect")
 ----- end -----
