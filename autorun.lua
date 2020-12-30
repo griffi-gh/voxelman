@@ -6,7 +6,7 @@ local type = type
 local jmod = tpt.version.jacob1s_mod~=nil
 
 local manager = {
-  versionID = 3,
+  versionID = 4,
   dir = 'scripts/',
   sdir = 'lua/',
   button={
@@ -223,27 +223,30 @@ local function c64transfer()
         for p in parts(ar,'\n') do
           if #p>=2 then
             local oinf = varParse(p,',')
-            local path = 'scripts/'..oinf.path:gsub('\\','/')
-            local ninf = {
-              description = oinf.description,
-              version = tonumber(oinf.version),
-              name = oinf.name,
-              creator = oinf.author,
-              id = 'converted-'..oinf.name..oinf.ID,
-              noVerify = true,
-              converted = true,
-              oid = oinf.ID,
-              run = 'main.lua'
-            }
-            local dir = 'scripts/'..ninf.id
-            fs.makeDirectory(dir)
-            --tpt.log(path)
-            --tpt.log(dir..'/main.lua')
-            fs.move(path,dir..'/main.lua')
-            local f = io.open(dir..'/info.var','wb')
-            assert(f,'Unable to open info.var file: f'..dir..'/info.var')
-            f:write(varEncode(ninf))
-            f:close()
+            if oinf.name~='autorun' or oinf.status=="HIDDEN" and oinf.path then
+              local path = 'scripts/'..oinf.path:gsub('\\','/')
+              local chk = io.open(path)
+              if chk then
+                chk:close()
+                local ninf = {
+                  description = oinf.description,
+                  version = tonumber(oinf.version),
+                  name = oinf.name..' (converted)',
+                  creator = oinf.author,
+                  id = 'converted-'..oinf.name..oinf.ID,
+                  converted = true,
+                  oid = oinf.ID,
+                  run = 'main.lua'
+                }
+                local dir = 'scripts/'..ninf.id
+                fs.makeDirectory(dir)
+                fs.move(path,dir..'/main.lua')
+                local f = io.open(dir..'/info.var','wb')
+                assert(f,'Unable to open info.var file: f'..dir..'/info.var')
+                f:write(varEncode(ninf))
+                f:close()
+              end
+            end
           end
         end
       end
@@ -1351,7 +1354,15 @@ _G.voxelman = {
     if type(y)=='number' then
       manager.button.y = y
     end
-  end
+  end,
+  
+  getScriptHash = function(id)
+    for i,v in pairs(manager.loaded) do
+      if v.info.id == id then
+        return v.hash
+      end
+    end
+  end 
 }
 
 UIadd(
