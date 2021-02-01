@@ -6,7 +6,7 @@ local type = type
 local jmod = tpt.version.jacob1s_mod~=nil
 
 local manager = {
-  versionID = 4,
+  versionID = 5,
   dir = 'scripts/',
   sdir = 'lua/',
   button={
@@ -29,6 +29,9 @@ local manager = {
   },
   loaded = {},
   toRun = {},
+  online = {
+    server = 'http://localhost:49152/' --for testing
+  },
   TPTMPSupport = true,
   loadVerifiedHashes = true,
   updateCheck = true,
@@ -675,6 +678,156 @@ local function getTab(tab)
   end
 end
 
+local function downloadSync(url,query,timeout)
+  timeout = timeout or 10
+  local vs = ''
+  if query then
+    vs = vs..'?'
+    for i,v in ipairs(query) do
+      vs = vs..i..'='..v..'&'
+    end
+    vs = vs:sub(1,#vs-1)
+  end
+  local furl = url..vs
+  local req = http.get(furl)
+  --
+  local time,sleep = 0,.05
+  while req:status()=='running' do
+    socket.sleep(sleep)
+    time = time+sleep
+    if time>timeout then
+      return false,'timeout'
+    end
+  end
+  --
+  local s = req:status()
+  if s=='done' then
+    return req:finish()
+  end
+  return false,s
+end
+
+function manager.online.conntest(s)
+  s = s or manager.online.server
+  local res,code = downloadSync(s..'conntest')
+  return (res=='ok' and code==200),code
+end
+
+function manager.online.scriptInfo(id,s)
+  s = s or manager.online.server
+  local res,code = downloadSync(s..'scriptInfo',{id=id})
+  if res and code==200 then
+    local rp = varParse(res)
+    if rp.type=='scriptInfo' then
+      return rp,res
+    end
+  end
+  return false
+end
+
+function manager.online.scriptList(st,en,s)
+  s = s or manager.online.server
+  local res,code = downloadSync(
+    s..'scriptList',
+    {
+      ['start'] = st,
+      ['end'] = en,
+    }
+  )
+  if res and code==200 then
+    local t = {}
+    for p in parts(res,';') do
+      table.insert(t,p)
+    end
+    return t
+  end
+  return false
+end
+
+function manager.online.processScriptList(l,s)
+  if l and #l>0 then
+    local nl = {}
+    for i,v in ipairs(l) do
+      nl[i] = manager.online.scriptInfo(v,s)
+    end
+    return nl
+  end
+  return false
+end
+
+function manager.online.getTime(s) --why
+  s = s or manager.online.server
+  local res,code = downloadSync(s..'time')
+  if res and code==200 then
+    return tonumber(res)
+  end
+  return false
+end
+
+function manager.online.downloadScriptFile(id,file,version,s)
+  version = version or 'latest'
+  local res,code = downloadSync(s..'download',{id=id,file=file,version=version})
+  if res and code==200 then
+    return res
+  end
+end
+
+local function errorScreen(cnx,cny,cnw,cnh,errtxt)
+  graphics.fillRect(cnx,cny,cnw,cnh,0,0,0,100) --darken bg
+  local iconsize = 32
+  local centerx = cnx+cnw/2
+  local centery = cny+cnh/2
+  --math.floor(iconsize*(math.abs(math.sin(os.clock()*2))/2+.5)) fancy
+  for i=1,iconsize do
+    local a = math.floor((1-i/iconsize)*60)
+    graphics.fillCircle(
+      math.floor(centerx),
+      math.floor(centery-iconsize/2)+1,
+      i,i,255,100,100,a
+    )
+  end
+  for i=1,iconsize do
+    local a,b = math.floor(centerx-i/2),math.floor(centerx+i/2)
+    local h = math.floor(centery-iconsize+i)
+    graphics.drawLine(a,h,b,h,255,20,20,220)
+  end
+  local linew = 3
+  for i=1,linew do
+    local xh = math.floor(centerx-linew/2+i)
+    graphics.drawLine(
+      xh,math.floor(centery-7-linew),
+      xh,math.floor(centery-iconsize+12)
+    )
+    graphics.drawLine(
+      xh,math.floor(centery-5),
+      xh,math.floor(centery-4-linew)
+    )
+  end
+  graphics.drawLine(
+    math.floor(centerx-iconsize/2),
+    math.floor(centery),
+    math.floor(centerx),
+    math.floor(centery-iconsize)
+  )
+  graphics.drawLine(
+    math.floor(centerx),
+    math.floor(centery-iconsize),
+    math.floor(centerx+iconsize/2),
+    math.floor(centery)
+  )
+  graphics.drawLine(
+    math.floor(centerx+iconsize/2),
+    math.floor(centery),
+    math.floor(centerx-iconsize/2),
+    math.floor(centery)
+  )
+  graphics.drawText(
+    math.floor(centerx-tpt.textwidth(errtxt)/2),
+    math.floor(centery+TEXTH/2+2),
+    errtxt
+  )
+end
+
 local function tick()
   if manager.updateCheck and updateChkReq then
     local stat = updateChkReq:status()
@@ -1084,7 +1237,11 @@ local function tick()
         buttonCollision(mouseX,mouseY)
       end
     elseif tab=='online' then
-      graphics.drawText(cnx,cny,'Coming soon')
+      if tabt.var.status then
+        errorScreen(cnx,cny,cnw,cnh,'MENU NYI')
+      else
+        errorScreen(cnx,cny,cnw,cnh,'Unable to communicate with the server')
+      end
     end
     
     for i,v in ipairs(menuButtons) do
@@ -1144,7 +1301,34 @@ manager.menu.tabs = {
   {
     text = 'Online scripts',
     id = 'online',
-    var = {}
+    onSwitchTo = function(self) 
+      self.var.refresh(self)
+    end,
+    var = {
+      page = 1,
+      onPage = 9,
+      refresh = function(self)
+        local conn,err = manager.online.conntest()
+        if conn then
+          local start = 1+(page-1)*self.var.onPage
+          self.var.onlineList = manager.online.processScriptList(
+            manager.online.scriptList(start,start+self.var.onPage)
+          )
+          self.var.status = (self.var.onlineList and true or false)
+        end
+        if not(conn) or not(self.var.status) then
+          self.var.status = false
+          manager.pushNotification{
+            text = string.format('Error %s. Check internet connection.',err or '???'),
+            life = 240,
+            fade = true,
+            fadeStart = 15,
+            backgroundColor = {240,40,40,200},
+            borderColor = {100,0,0},
+          }
+        end
+      end
+    }
   }
 }
 
@@ -1270,8 +1454,6 @@ manager.pushNotification{
   fade = true,
 }
 
-runAll()
-
 local function str(v)
   local t = type(v)
   if t=='string' or t=='number' then 
@@ -1282,6 +1464,15 @@ local function str(v)
 end
 
 _G.voxelman = {
+  expose = function(t)
+    graphics.fillRect(0,0,graphics.WIDTH,graphics.HEIGHT,255,0,0,200)
+    local con = tpt.confirm('VOXELMAN','Allow access to internal table?\nThis will give the script (almost) full control over the manager. ')
+    if con then
+      return manager
+    else
+      return false
+    end
+  end,
   pushNotification = function(t)
     local tt = type(t)
     if tt~='table' then
@@ -1377,6 +1568,8 @@ manager.menu.tabs[1]:onSwitchTo()
 if jmod then
   manager.button.y = manager.button.y+16
 end
+
+runAll()
 
 collectgarbage("collect")
 ----- end -----
