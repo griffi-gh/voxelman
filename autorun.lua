@@ -61,7 +61,7 @@ local function restart()
   end
 end
 
-local verifiedHashes = {}
+manager.verifiedHashes = {}
 
 local updateCheckUrl = 'https://raw.githubusercontent.com/griffi-gh/voxelman/main/LATEST'
 local updateDownloadUrl = 'https://raw.githubusercontent.com/griffi-gh/voxelman/main/autorun.lua'
@@ -99,6 +99,33 @@ do
   end
 end
 --
+local function setchar(str,pos,r)
+  return ("%s%s%s"):format(str:sub(1,pos-1),r,str:sub(pos+1))
+end
+
+local function wordSplit(t,cc)
+  cc = cc or 25
+  local n = 0
+  for i=1,#t do
+    local c = t:sub(i,i)
+    if c==' ' then
+      if n>=cc then
+        t = setchar(t,i,'\n')
+        n = 0
+      end
+    elseif c=='\n' then
+      n = 0
+    else
+      n = n+1
+    end
+  end
+  return t
+end
+
+local function textheight(str)
+  local _,lc = str:gsub('\n','')
+  return lc==0 and TEXTH or (TEXTH+lc*(TEXTH*2))+1
+end
 
 local function parts(i,s)
   return string.gmatch(i..s,'(.-)'..s)
@@ -900,7 +927,7 @@ local function tick()
       if type(d)=='string' and #d>1 then
         local l = varParse(d)
         for i,v in pairs(l) do
-          verifiedHashes[tonumber(v)] = true
+          manager.verifiedHashes[tonumber(v)] = true
         end
         manager.pushNotification{
           text = 'Verification data received',
@@ -1141,7 +1168,7 @@ local function tick()
         
         if mouseX>cx+trx and mouseY>cy+try and mouseX<cx+trx+tpt.textwidth(ta) and mouseY<cy+try+TEXTH*1.1 then
           local desc = v.info.description or 'No description'
-          local _,lc = desc:gsub('\n','')
+          desc = wordSplit(desc,30)
           if v.info.version or v.info.versionString then
             desc = string.format(
               'Version: %s(%s)\n%s',
@@ -1149,9 +1176,9 @@ local function tick()
               v.info.version or '?',
               desc
             )
-            lc = lc+1
           end
-          local texth = (lc+1)*(TEXTH*1.8)
+          --local _,lc = desc:gsub('\n','')
+          local texth = textheight(desc)--TEXTH+(lc+1)*(TEXTH*1.9)
           local textw = 0
           for p in parts(desc,'\n') do
             textw = math.max(textw,tpt.textwidth(p))
@@ -1164,7 +1191,7 @@ local function tick()
         end
         
         --Verified icon
-        local isVerified = verifiedHashes[v.hash]
+        local isVerified = manager.verifiedHashes[v.hash]
         if isVerified then
           local cx,cy = math.floor(cx+trx+tpt.textwidth(tb)+TEXTH),math.floor(cy+try+(TEXTH*1.5)+3)
           local ro = math.floor(TEXTH/1.5)
