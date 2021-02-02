@@ -6,7 +6,7 @@ local type = type
 local jmod = tpt.version.jacob1s_mod~=nil
 
 local manager = {
-  versionID = 5,
+  versionID = 6,
   dir = 'scripts/',
   sdir = 'lua/',
   button={
