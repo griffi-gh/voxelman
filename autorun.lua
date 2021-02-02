@@ -1,12 +1,12 @@
 -----start-----
 assert(tpt and graphics and event,'VOXELMAN requires The Powder Toy Lua API')
 
-local TEXTH = 6
+local TEXTH = 7
 local type = type
 local jmod = tpt.version.jacob1s_mod~=nil
 
 local manager = {
-  versionID = 6,
+  versionID = 7,
   dir = 'scripts/',
   sdir = 'lua/',
   button={
@@ -30,7 +30,7 @@ local manager = {
   loaded = {},
   toRun = {},
   online = {
-    server = 'http://localhost:49152/' --for testing
+    server = 'https://0e160ae26749.ngrok.io/api/v1/' --f*ck tpt
   },
   TPTMPSupport = true,
   loadVerifiedHashes = true,
@@ -805,14 +805,14 @@ local function errorScreen(cnx,cny,cnw,cnh,errtxt)
   local centerx = cnx+cnw/2
   local centery = cny+cnh/2
   --math.floor(iconsize*(math.abs(math.sin(os.clock()*2))/2+.5)) fancy
-  for i=1,iconsize do
+  --[[for i=1,iconsize do
     local a = math.floor((1-i/iconsize)*60)
     graphics.fillCircle(
       math.floor(centerx),
       math.floor(centery-iconsize/2)+1,
       i,i,255,100,100,a
     )
-  end
+  end]]
   for i=1,iconsize do
     local a,b = math.floor(centerx-i/2),math.floor(centerx+i/2)
     local h = math.floor(centery-iconsize+i)
@@ -1337,7 +1337,7 @@ manager.menu.tabs = {
       refresh = function(self)
         local conn,err = manager.online.conntest()
         if conn then
-          local start = 1+(page-1)*self.var.onPage
+          local start = 1+(self.var.page-1)*self.var.onPage
           self.var.onlineList = manager.online.processScriptList(
             manager.online.scriptList(start,start+self.var.onPage)
           )
