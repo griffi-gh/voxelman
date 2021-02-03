@@ -6,8 +6,8 @@ local type = type
 local jmod = tpt.version.jacob1s_mod~=nil
 
 local manager = {
-  versionID = 8,
-  versionString = '0.8',
+  versionID = 9,
+  versionString = '0.8a',
   dir = 'scripts/',
   sdir = 'lua/',
   button={
@@ -787,11 +787,11 @@ do
     return false
   end
   function manager.online.scriptInfo(id,s)
-    return proc(downloadSync(ass(id,s))
+    return proc(downloadSync(ass(id,s)))
   end
   function manager.online.scriptInfoAsync(id,s,cb)
     local u,q = ass(st,en,s)
-    downloadAsync(u,q,nil,local function(...) cb(proc(...)) end)
+    downloadAsync(u,q,nil,function(...) cb(proc(...)) end)
   end
 end
 
