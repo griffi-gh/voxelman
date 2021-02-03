@@ -6,7 +6,8 @@ local type = type
 local jmod = tpt.version.jacob1s_mod~=nil
 
 local manager = {
-  versionID = 7,
+  versionID = 8,
+  versionString = '0.8',
   dir = 'scripts/',
   sdir = 'lua/',
   button={
@@ -30,7 +31,7 @@ local manager = {
   loaded = {},
   toRun = {},
   online = {
-    server = 'https://0e160ae26749.ngrok.io/api/v1/' --f*ck tpt
+    server = 'https://0.0.0.0/api/v1/' --no, server is not ready yet
   },
   TPTMPSupport = true,
   loadVerifiedHashes = true,
@@ -124,7 +125,7 @@ end
 
 local function textheight(str)
   local _,lc = str:gsub('\n','')
-  return lc==0 and TEXTH or (TEXTH+lc*(TEXTH*2))+1
+  return lc==0 and TEXTH or (TEXTH+lc*(TEXTH*1.7))+1 --bad ?
 end
 
 local function parts(i,s)
@@ -705,8 +706,7 @@ local function getTab(tab)
   end
 end
 
-local function downloadSync(url,query,timeout)
-  timeout = timeout or 10
+local function assurl(url,query)
   local vs = ''
   if query then
     vs = vs..'?'
@@ -715,7 +715,39 @@ local function downloadSync(url,query,timeout)
     end
     vs = vs:sub(1,#vs-1)
   end
-  local furl = url..vs
+  return url..vs
+end
+
+local dtasks = {}
+local function checkAsyncTasks()
+  for i=#dtasks,1,-1 do
+    local v = dtasks[i]
+    local s = v.req:status()
+    local d = false
+    if s=='done' then
+      v.cb(req:finish())
+      d = true
+    elseif s~='running' then
+      v.cb(false,s)
+      d = true
+    elseif os.time()>math.ceil(v.start+v.timeout) then
+      v.cb(false,timeout)
+      d = true
+    end
+    if d then
+      table.remove(dtasks,i)
+    end
+  end
+end
+local function downloadAsync(url,query,timeout,callback)
+  local furl = assurl(url,query)
+  local req = http.get(furl)
+  table.insert(dtasks,{req=req,c=callback,timeout=timeout or 10,start=os.time()})
+end
+
+local function downloadSync(url,query,timeout)
+  timeout = timeout or 10
+  local furl = assurl(url,query)
   local req = http.get(furl)
   --
   local time,sleep = 0,.05
@@ -740,35 +772,51 @@ function manager.online.conntest(s)
   return (res=='ok' and code==200),code
 end
 
-function manager.online.scriptInfo(id,s)
-  s = s or manager.online.server
-  local res,code = downloadSync(s..'scriptInfo',{id=id})
-  if res and code==200 then
-    local rp = varParse(res)
-    if rp.type=='scriptInfo' then
-      return rp,res
-    end
+do
+  local function ass(id,s)
+    s = s or manager.online.server
+    return s..'scriptInfo',{id=id}
   end
-  return false
+  local function proc(res,code)
+    if res and code==200 then
+      local rp = varParse(res)
+      if rp.type=='scriptInfo' then
+        return rp,res
+      end
+    end
+    return false
+  end
+  function manager.online.scriptInfo(id,s)
+    return proc(downloadSync(ass(id,s))
+  end
+  function manager.online.scriptInfoAsync(id,s,cb)
+    local u,q = ass(st,en,s)
+    downloadAsync(u,q,nil,local function(...) cb(proc(...)) end)
+  end
 end
 
-function manager.online.scriptList(st,en,s)
-  s = s or manager.online.server
-  local res,code = downloadSync(
-    s..'scriptList',
-    {
-      ['start'] = st,
-      ['end'] = en,
-    }
-  )
-  if res and code==200 then
-    local t = {}
-    for p in parts(res,';') do
-      table.insert(t,p)
-    end
-    return t
+do
+  local function ass(st,en,s)
+    s = s or manager.online.server
+    return s..'scriptList',{['start'] = st,['end'] = en}
   end
-  return false
+  local function proc(res,code)
+    if res and code==200 then
+      local t = {}
+      for p in parts(res,';') do
+        table.insert(t,p)
+      end
+      return t
+    end
+    return false,c
+  end
+  function manager.online.scriptList(st,en,s)
+    return proc(downloadSync(ass(st,en,s)))
+  end
+  function manager.online.scriptListAsync(st,en,s,cb)
+    local u,q = ass(st,en,s)
+    downloadAsync(u,q,nil,function(...) cb(proc(...)) end)
+  end
 end
 
 function manager.online.processScriptList(l,s)
@@ -780,16 +828,7 @@ function manager.online.processScriptList(l,s)
     return nl
   end
   return false
-end
-
-function manager.online.getTime(s) --why
-  s = s or manager.online.server
-  local res,code = downloadSync(s..'time')
-  if res and code==200 then
-    return tonumber(res)
-  end
-  return false
-end
+end 
 
 function manager.online.downloadScriptFile(id,file,version,s)
   version = version or 'latest'
@@ -1027,7 +1066,9 @@ local function tick()
     graphics.fillRect(mx,my,mw,mh,0,0,0) --Bg
     graphics.drawRect(mx,my,mw,toph,255,255,255) --title bar
     graphics.drawRect(mx,my,mw,mh,255,255,255) --Border
-    graphics.drawText(mx+4,my+TEXTH/2,"VOXELMAN") --Title text
+    local nmx,nmy,nms = mx+4,math.floor(my+TEXTH/2),"VOXELMAN"
+    graphics.drawText(nmx,nmy,nms) --Title text
+    graphics.drawText(nmx+tpt.textwidth(nms)+5,nmy,manager.versionString,128,128,128,250) --version
     graphics.drawLine(mx,my+toph+tabBarH,mx+mw-1,my+toph+tabBarH) -- tab sep
     
     local tab = manager.menu.tab
@@ -1265,7 +1306,7 @@ local function tick()
       end
     elseif tab=='online' then
       if tabt.var.status then
-        errorScreen(cnx,cny,cnw,cnh,'MENU NYI')
+        errorScreen(cnx,cny,cnw,cnh,'Script count:'..#tabt.var.onlineList)
       else
         errorScreen(cnx,cny,cnw,cnh,'Unable to communicate with the server')
       end
@@ -1304,6 +1345,7 @@ local function tick()
       end
     end
   end
+  checkAsyncTasks()
 end
 
 manager.menu.tabs = {
